@@ -245,6 +245,88 @@ th {
     color: #999;
 }
 
+/* Phase 3 Styles */
+.red-flag-alert {
+    background: #fff5f5;
+    border: 2px solid #ff4d4d;
+    padding: 1.5rem;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.red-flag-alert h3 {
+    color: #cc0000;
+    margin-top: 0;
+}
+
+.emergency-btn {
+    background: #cc0000 ! from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0.5;
+    }
+}
+
+.status-badge.calling {
+    background: #fff3cd;
+    color: #856404;
+    animation: blink 1s infinite;
+}
+
+.status-badge.seen {
+    background: #d4edda;
+    color: #155724;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.action-btns {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.action-btn {
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    border: none;
+    font-size: 0.75rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.call-btn {
+    background: #ffc107;
+    color: #000;
+}
+
+.seen-btn {
+    background: #28a745;
+    color: #fff;
+}
+
+.auto-checkin-opt {
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.wait-time {
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: 1rem;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;

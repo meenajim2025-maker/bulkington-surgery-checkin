@@ -17,6 +17,7 @@ export async function saveCheckin(patientData) {
     const db = await initDB();
     const checkin = {
         ...patientData,
+        status: 'Waiting',
         timestamp: new Date().toISOString()
     };
     return db.add(STORE_NAME, checkin);
@@ -25,4 +26,14 @@ export async function saveCheckin(patientData) {
 export async function getCheckins() {
     const db = await initDB();
     return db.getAll(STORE_NAME);
+}
+
+export async function updateCheckinStatus(id, status) {
+    const db = await initDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const checkin = await store.get(id);
+    checkin.status = status;
+    await store.put(checkin);
+    return tx.done;
 }
