@@ -13,9 +13,13 @@ export async function initDB() {
     });
 }
 
-export async function saveCheckin(checkin) {
+export async function saveCheckin(patientData) {
     const db = await initDB();
-    return db.add(STORE_NAME, { ...checkin, timestamp: new Date().toISOString() });
+    const checkin = {
+        ...patientData,
+        timestamp: new Date().toISOString()
+    };
+    return db.add(STORE_NAME, checkin);
 }
 
 export async function getCheckins() {
