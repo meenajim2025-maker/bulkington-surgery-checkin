@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { saveCheckin } from './db';
 import './index.css';
 
-const SURGERY_COORDS = { lat: 52.476453, lng: -1.423131 };
+const SURGERY_COORDS = { lat: 52.47706623357887, lng: -1.4231060516278988 };
 const CHECKIN_RADIUS_METERS = 200;
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
