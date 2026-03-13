@@ -261,13 +261,8 @@ th {
 }
 
 .emergency-btn {
-    background: #cc0000 ! from {
-        opacity: 1;
-    }
-
-    to {
-        opacity: 0.5;
-    }
+    background: #cc0000;
+    margin-top: 1rem;
 }
 
 .status-badge.calling {

@@ -3,7 +3,7 @@ import { saveCheckin, getCheckins } from '../db';
 
 const SURGERY_COORDS = { lat: 52.476995, lng: -1.423161 };
 const CHECKIN_RADIUS_METERS = 200;
-const BUILD_VERSION = "1.0.4 - Phase 3 Admin/Auto";
+const BUILD_VERSION = "1.0.5 - Cloud Powered";
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371e3; // Earth's radius in meters
@@ -36,13 +36,19 @@ function CheckInForm() {
     const [autoCheckin, setAutoCheckin] = useState(localStorage.getItem('auto_checkin') === 'true');
     const [queueCount, setQueueCount] = useState(0);
 
-    useEffect(() => {
-        const fetchQueue = async () => {
+    const fetchQueue = async () => {
+        try {
             const all = await getCheckins();
-            const waiting = all.filter(c => c.status === 'Waiting' || c.status === 'Calling').length;
-            setQueueCount(waiting);
-        };
+            setQueueCount(all.length);
+        } catch (err) {
+            console.error("Queue fetch failed (Cloud might be disconnected)");
+        }
+    };
+
+    useEffect(() => {
         fetchQueue();
+        const interval = setInterval(fetchQueue, 15000); // Check queue every 15s
+        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
@@ -68,7 +74,7 @@ function CheckInForm() {
                 }
             },
             (error) => {
-                setStatus(`Error getting location: ${error.message}`);
+                setStatus(`Location error: ${error.message}`);
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
@@ -78,17 +84,18 @@ function CheckInForm() {
 
     const handleAutoSubmit = async () => {
         try {
+            setStatus('Checking in automatically...');
             await saveCheckin({ ...formData, purpose: 'Auto-Arrival' });
-            setStatus('Auto Check-in successful!');
+            setStatus('Check-in successful!');
         } catch (err) {
             console.error("Auto check-in failed", err);
+            setStatus('Auto check-in failed. Please check cloud connection.');
         }
     };
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
-        // Save preferences
         if (name === 'name') localStorage.setItem('pref_name', value);
         if (name === 'dob') localStorage.setItem('pref_dob', value);
     };
@@ -112,22 +119,24 @@ function CheckInForm() {
             setRedFlagState('emergency');
         } else {
             setRedFlagState('none');
+            // Final submit
+            submitCheckin();
         }
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    const submitCheckin = async () => {
         if (!canCheckIn) {
             setStatus('You are too far from the surgery to check in.');
             return;
         }
 
         try {
+            setStatus('Sending to Cloud...');
             await saveCheckin(formData);
             setStatus('Check-in successful!');
             setFormData(prev => ({ ...prev, purpose: '' }));
         } catch (err) {
-            setStatus(`Failed to check in: ${err.message}`);
+            setStatus(`Cloud sync failed: ${err.message}. Please check credentials.`);
         }
     };
 
@@ -215,7 +224,7 @@ function CheckInForm() {
                 )}
             </section>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={(e) => { e.preventDefault(); startCheckIn(); }}>
                 <div className="input-group">
                     <label htmlFor="name">Full Name</label>
                     <input
@@ -250,20 +259,10 @@ function CheckInForm() {
                         required
                     />
                 </div>
-                <button type="button" onClick={startCheckIn} disabled={!canCheckIn || status.includes('successful')}>
+                <button type="submit" disabled={!canCheckIn || status.includes('successful')}>
                     {canCheckIn ? 'Check In' : 'Arrive at Surgery to Check In'}
                 </button>
-                {/* Real submit is triggered after screening */}
-                {redFlagState === 'screening' && <button type="submit" id="hidden-submit" style={{ display: 'none' }}></button>}
             </form>
-
-            <button
-                type="button"
-                onClick={handleSubmit}
-                style={{ display: redFlagState === 'none' && canCheckIn && !status.includes('suc') ? 'none' : 'none' }}
-            >
-                Submit
-            </button>
 
             {status && <p className="status-message">{status}</p>}
         </main>

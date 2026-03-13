@@ -1,25 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { getCheckins, updateCheckinStatus } from '../db';
+import React, { useState, useEffect } from 'react';
+import { getCheckins, updateCheckinStatus, subscribeToCheckins } from '../db';
 
 function StaffDashboard() {
     const [checkins, setCheckins] = useState([]);
     const [loading, setLoading] = useState(true);
     const [lastCount, setLastCount] = useState(0);
-    const audioRef = useRef(null);
 
     const fetchCheckins = async () => {
         try {
             const data = await getCheckins();
-            // Filter out 'Seen' unless we want an archive view later
-            const active = data.filter(c => c.status !== 'Seen');
-            const sorted = active.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-            setCheckins(sorted);
-
-            // Notify if new check-in
-            if (active.length > lastCount) {
-                playNotifySound();
-            }
-            setLastCount(active.length);
+            setCheckins(data);
+            setLastCount(data.length);
         } catch (err) {
             console.error("Failed to fetch check-ins:", err);
         } finally {
@@ -29,12 +20,23 @@ function StaffDashboard() {
 
     useEffect(() => {
         fetchCheckins();
-        const interval = setInterval(fetchCheckins, 5000);
-        return () => clearInterval(interval);
-    }, [lastCount]);
+
+        // Subscribe to real-time updates
+        const subscription = subscribeToCheckins((payload) => {
+            console.log('Real-time update:', payload);
+            fetchCheckins(); // Refresh on any change
+
+            if (payload.eventType === 'INSERT') {
+                playNotifySound();
+            }
+        });
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, []);
 
     const playNotifySound = () => {
-        // Use a built-in browser beep or a short silent-ish audio if needed
         const context = new (window.AudioContext || window.webkitAudioContext)();
         const oscillator = context.createOscillator();
         const gainNode = context.createGain();
@@ -50,7 +52,8 @@ function StaffDashboard() {
     const handleAction = async (id, status) => {
         try {
             await updateCheckinStatus(id, status);
-            fetchCheckins();
+            // Local update for immediate feedback
+            setCheckins(prev => prev.map(c => c.id === id ? { ...c, status } : c));
         } catch (err) {
             alert("Failed to update status: " + err.message);
         }
@@ -67,11 +70,11 @@ function StaffDashboard() {
                     <h2>Patient Arrival Dashboard</h2>
                     <p style={{ fontSize: '0.8rem', color: '#666' }}>Currently {checkins.length} patients waiting</p>
                 </div>
-                <span className="live-indicator">● LIVE MONITORING</span>
+                <span className="live-indicator">● LIVE CLOUD MONITORING</span>
             </header>
 
             {loading ? (
-                <p>Loading arrivals...</p>
+                <p>Connecting to Cloud...</p>
             ) : checkins.length === 0 ? (
                 <div className="empty-state">
                     <p>No patients are currently in the waiting area.</p>

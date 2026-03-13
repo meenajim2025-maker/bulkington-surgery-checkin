@@ -1,39 +1,53 @@
-import { openDB } from 'idb';
+import { createClient } from '@supabase/supabase-js';
 
-const DB_NAME = 'BulkingtonCheckinDB';
-const STORE_NAME = 'checkins';
+// These should be set in a .env file for production
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
 
-export async function initDB() {
-    return openDB(DB_NAME, 1, {
-        upgrade(db) {
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-            }
-        },
-    });
-}
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export async function saveCheckin(patientData) {
-    const db = await initDB();
-    const checkin = {
-        ...patientData,
-        status: 'Waiting',
-        timestamp: new Date().toISOString()
-    };
-    return db.add(STORE_NAME, checkin);
+    const { data, error } = await supabase
+        .from('checkins')
+        .insert([
+            {
+                ...patientData,
+                status: 'Waiting',
+                timestamp: new Date().toISOString()
+            }
+        ]);
+
+    if (error) throw error;
+    return data;
 }
 
 export async function getCheckins() {
-    const db = await initDB();
-    return db.getAll(STORE_NAME);
+    const { data, error } = await supabase
+        .from('checkins')
+        .select('*')
+        .neq('status', 'Seen')
+        .order('timestamp', { ascending: false });
+
+    if (error) throw error;
+    return data;
 }
 
 export async function updateCheckinStatus(id, status) {
-    const db = await initDB();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const checkin = await store.get(id);
-    checkin.status = status;
-    await store.put(checkin);
-    return tx.done;
+    const { data, error } = await supabase
+        .from('checkins')
+        .update({ status })
+        .eq('id', id);
+
+    if (error) throw error;
+    return data;
+}
+
+// Subscription helper for real-time updates
+export function subscribeToCheckins(onUpdate) {
+    return supabase
+        .channel('public:checkins')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, payload => {
+            onUpdate(payload);
+        })
+        .subscribe();
 }
