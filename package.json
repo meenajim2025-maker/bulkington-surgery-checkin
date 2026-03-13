@@ -5,18 +5,15 @@
     "dependencies": {
         "react": "^17.0.0",
         "react-dom": "^17.0.0",
-        "react-scripts": "^4.0.0",
+        "react-scripts": "^5.0.0",
         "idb": "^6.0.0",
         "papaparse": "^5.3.0"
     },
     "scripts": {
         "start": "react-scripts start",
-        "build": "CI=false react-scripts build",
+        "build": "react-scripts build",
         "test": "react-scripts test",
         "eject": "react-scripts eject"
-    },
-    "engines": {
-        "node": "24.x"
     },
     "homepage": ".",
     "browserslist": {
