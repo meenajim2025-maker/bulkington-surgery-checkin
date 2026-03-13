@@ -108,6 +108,29 @@ button:disabled {
     font-size: 0.9rem;
 }
 
+.diag-btn {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    font-size: 0.8rem;
+    text-decoration: underline;
+    cursor: pointer;
+    margin-top: 0.5rem;
+}
+
+.diagnostics {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 5px;
+    font-size: 0.75rem;
+    text-align: left;
+}
+
+.diagnostics p {
+    margin: 0.2rem 0;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;

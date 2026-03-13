@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { saveCheckin } from './db';
 import './index.css';
 
-const SURGERY_COORDS = { lat: 52.4795, lng: -1.4172 };
-const CHECKIN_RADIUS_METERS = 100;
+const SURGERY_COORDS = { lat: 52.476453, lng: -1.423131 };
+const CHECKIN_RADIUS_METERS = 200;
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371e3; // Earth's radius in meters
@@ -23,9 +23,11 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 function App() {
     const [location, setLocation] = useState(null);
     const [distance, setDistance] = useState(null);
+    const [accuracy, setAccuracy] = useState(null);
     const [canCheckIn, setCanCheckIn] = useState(false);
     const [formData, setFormData] = useState({ name: '', dob: '', purpose: '' });
     const [status, setStatus] = useState('');
+    const [showDiagnostics, setShowDiagnostics] = useState(false);
 
     useEffect(() => {
         if (!navigator.geolocation) {
@@ -35,8 +37,9 @@ function App() {
 
         const watchId = navigator.geolocation.watchPosition(
             (position) => {
-                const { latitude, longitude } = position.coords;
+                const { latitude, longitude, accuracy } = position.coords;
                 setLocation({ lat: latitude, lng: longitude });
+                setAccuracy(accuracy);
                 const d = calculateDistance(latitude, longitude, SURGERY_COORDS.lat, SURGERY_COORDS.lng);
                 setDistance(d);
                 setCanCheckIn(d <= CHECKIN_RADIUS_METERS);
@@ -44,7 +47,7 @@ function App() {
             (error) => {
                 setStatus(`Error getting location: ${error.message}`);
             },
-            { enableHighAccuracy: true }
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
         );
 
         return () => navigator.geolocation.clearWatch(watchId);
@@ -80,10 +83,26 @@ function App() {
             <main>
                 <section className="location-info">
                     {distance !== null ? (
-                        <p className={canCheckIn ? 'within-range' : 'out-of-range'}>
-                            Distance: {distance.toFixed(0)}m
-                            {canCheckIn ? ' (In range)' : ' (Too far)'}
-                        </p>
+                        <>
+                            <p className={canCheckIn ? 'within-range' : 'out-of-range'}>
+                                Distance: {distance.toFixed(0)}m
+                                {canCheckIn ? ' (In range)' : ' (Too far)'}
+                            </p>
+                            <button
+                                type="button"
+                                className="diag-btn"
+                                onClick={() => setShowDiagnostics(!showDiagnostics)}
+                            >
+                                {showDiagnostics ? 'Hide Diagnostics' : 'Show Diagnostics'}
+                            </button>
+                            {showDiagnostics && (
+                                <div className="diagnostics">
+                                    <p>Lat: {location?.lat.toFixed(6)}</p>
+                                    <p>Lng: {location?.lng.toFixed(6)}</p>
+                                    <p>Accuracy: {accuracy?.toFixed(0)}m</p>
+                                </div>
+                            )}
+                        </>
                     ) : (
                         <p>Locating...</p>
                     )}
