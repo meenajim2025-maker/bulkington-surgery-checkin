@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { saveCheckin } from './db';
 import './index.css';
 
-const SURGERY_COORDS = { lat: 52.47706623357887, lng: -1.4231060516278988 };
+const SURGERY_COORDS = { lat: 52.476995, lng: -1.423161 };
 const CHECKIN_RADIUS_METERS = 200;
+const BUILD_VERSION = "1.0.3 - Final Coord Fix";
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371e3; // Earth's radius in meters
@@ -47,7 +48,11 @@ function App() {
             (error) => {
                 setStatus(`Error getting location: ${error.message}`);
             },
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            }
         );
 
         return () => navigator.geolocation.clearWatch(watchId);
@@ -56,6 +61,19 @@ function App() {
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleRefresh = () => {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then((registrations) => {
+                for (let registration of registrations) {
+                    registration.unregister();
+                }
+                window.location.reload(true);
+            });
+        } else {
+            window.location.reload(true);
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -78,6 +96,7 @@ function App() {
         <div className="container">
             <header>
                 <h1>Bulkington Surgery Check-in</h1>
+                <p className="version-tag">v{BUILD_VERSION}</p>
             </header>
 
             <main>
@@ -88,18 +107,29 @@ function App() {
                                 Distance: {distance.toFixed(0)}m
                                 {canCheckIn ? ' (In range)' : ' (Too far)'}
                             </p>
-                            <button
-                                type="button"
-                                className="diag-btn"
-                                onClick={() => setShowDiagnostics(!showDiagnostics)}
-                            >
-                                {showDiagnostics ? 'Hide Diagnostics' : 'Show Diagnostics'}
-                            </button>
+                            <div className="button-group">
+                                <button
+                                    type="button"
+                                    className="secondary-btn"
+                                    onClick={() => setShowDiagnostics(!showDiagnostics)}
+                                >
+                                    {showDiagnostics ? 'Hide Info' : 'Show Info'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="secondary-btn"
+                                    onClick={handleRefresh}
+                                >
+                                    Force Refresh
+                                </button>
+                            </div>
                             {showDiagnostics && (
                                 <div className="diagnostics">
-                                    <p>Lat: {location?.lat.toFixed(6)}</p>
-                                    <p>Lng: {location?.lng.toFixed(6)}</p>
-                                    <p>Accuracy: {accuracy?.toFixed(0)}m</p>
+                                    <p>Your Lat: {location?.lat.toFixed(6)}</p>
+                                    <p>Your Lng: {location?.lng.toFixed(6)}</p>
+                                    <p>Target Lat: {SURGERY_COORDS.lat.toFixed(6)}</p>
+                                    <p>Target Lng: {SURGERY_COORDS.lng.toFixed(6)}</p>
+                                    <p>GPS Accuracy: {accuracy?.toFixed(0)}m</p>
                                 </div>
                             )}
                         </>
