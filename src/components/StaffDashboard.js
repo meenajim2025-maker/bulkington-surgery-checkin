@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getCheckins, updateCheckinStatus, subscribeToCheckins, triggerEmergency } from '../db';
+import { getCheckins, updateCheckinStatus, subscribeToCheckins, triggerEmergency, checkoutPerson } from '../db';
 
 export default function StaffDashboard() {
     const [data, setData] = useState([]);
@@ -120,6 +120,7 @@ export default function StaffDashboard() {
                                         <div className="btn-group">
                                             <button className="btn btn-secondary" style={{ padding: '4px 10px' }} onClick={() => act(c.id, 'Calling')} disabled={c.status === 'Calling'}>CALL</button>
                                             <button className="btn btn-secondary" style={{ padding: '4px 10px', borderColor: 'var(--accent-primary)', color: 'var(--accent-primary)' }} onClick={() => act(c.id, 'Seen')}>DONE</button>
+                                            <button className="btn btn-secondary" style={{ padding: '4px 10px', borderColor: 'var(--emergency)', color: 'var(--emergency)' }} onClick={async () => { await checkoutPerson(c.id); load(); }}>OUT</button>
                                         </div>
                                     </td>
                                 </tr>
