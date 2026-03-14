@@ -1,272 +1,186 @@
 import React, { useState, useEffect } from 'react';
 import { saveCheckin, getCheckins } from '../db';
 
-const SURGERY_COORDS = { lat: 52.476995, lng: -1.423161 };
-const CHECKIN_RADIUS_METERS = 200;
-const BUILD_VERSION = "1.0.5 - Cloud Powered";
+const SURGERY = { lat: 52.476995, lng: -1.423161 };
+const RADIUS = 200;
+const VERSION = "2.1.0 — Enterprise";
 
-function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
+function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371e3;
+    const p = Math.PI / 180;
+    const a = Math.sin((lat2 - lat1) * p / 2) ** 2 +
+        Math.cos(lat1 * p) * Math.cos(lat2 * p) * Math.sin((lon2 - lon1) * p / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function CheckInForm() {
-    const [location, setLocation] = useState(null);
-    const [distance, setDistance] = useState(null);
-    const [accuracy, setAccuracy] = useState(null);
-    const [canCheckIn, setCanCheckIn] = useState(false);
-    const [formData, setFormData] = useState({
-        name: localStorage.getItem('pref_name') || '',
-        dob: localStorage.getItem('pref_dob') || '',
-        purpose: ''
-    });
+export default function CheckInForm() {
+    const [loc, setLoc] = useState(null);
+    const [dist, setDist] = useState(null);
+    const [acc, setAcc] = useState(null);
+    const [inRange, setInRange] = useState(false);
+    const [diag, setDiag] = useState(false);
     const [status, setStatus] = useState('');
-    const [showDiagnostics, setShowDiagnostics] = useState(false);
-    const [redFlagState, setRedFlagState] = useState('none'); // none, screening, emergency
-    const [autoCheckin, setAutoCheckin] = useState(localStorage.getItem('auto_checkin') === 'true');
-    const [queueCount, setQueueCount] = useState(0);
+    const [queue, setQueue] = useState(0);
+    const [screen, setScreen] = useState('form'); // form | screening | emergency
+    const [auto, setAuto] = useState(localStorage.getItem('auto_checkin') === 'true');
 
-    const fetchQueue = async () => {
-        try {
-            const all = await getCheckins();
-            setQueueCount(all.length);
-        } catch (err) {
-            console.error("Queue fetch failed (Cloud might be disconnected)");
-        }
-    };
+    const params = new URLSearchParams(window.location.search);
+    const orgType = params.get('type') || 'Patient';
 
+    const [form, setForm] = useState({
+        name: localStorage.getItem('pref_name') || '',
+        dob: orgType === 'Patient' ? (localStorage.getItem('pref_dob') || '') : '',
+        phone_number: localStorage.getItem('pref_phone') || '',
+        purpose: params.get('purpose') || '',
+        org_type: orgType
+    });
+
+    // Queue polling
     useEffect(() => {
-        fetchQueue();
-        const interval = setInterval(fetchQueue, 15000); // Check queue every 15s
-        return () => clearInterval(interval);
+        const f = async () => { try { setQueue((await getCheckins()).length); } catch { } };
+        f(); const i = setInterval(f, 15000); return () => clearInterval(i);
     }, []);
 
+    // Geolocation
     useEffect(() => {
-        if (!navigator.geolocation) {
-            setStatus('Geolocation is not supported by your browser');
-            return;
-        }
-
-        const watchId = navigator.geolocation.watchPosition(
-            (position) => {
-                const { latitude, longitude, accuracy } = position.coords;
-                setLocation({ lat: latitude, lng: longitude });
-                setAccuracy(accuracy);
-                const d = calculateDistance(latitude, longitude, SURGERY_COORDS.lat, SURGERY_COORDS.lng);
-                setDistance(d);
-
-                const inRange = d <= CHECKIN_RADIUS_METERS;
-                setCanCheckIn(inRange);
-
-                // Auto Check-in logic
-                if (inRange && autoCheckin && formData.name && formData.dob && !status.includes('successful')) {
-                    handleAutoSubmit();
+        if (!navigator.geolocation) { setStatus('Geolocation not supported'); return; }
+        const id = navigator.geolocation.watchPosition(
+            ({ coords }) => {
+                setLoc({ lat: coords.latitude, lng: coords.longitude });
+                setAcc(coords.accuracy);
+                const d = haversine(coords.latitude, coords.longitude, SURGERY.lat, SURGERY.lng);
+                setDist(d);
+                const ok = d <= RADIUS;
+                setInRange(ok);
+                if (ok && auto && form.name && (form.dob || form.phone_number) && !status.includes('success')) {
+                    doSubmit({ ...form, purpose: form.purpose || 'Auto-Arrival' });
                 }
             },
-            (error) => {
-                setStatus(`Location error: ${error.message}`);
-            },
+            (e) => setStatus(`Location: ${e.message}`),
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
+        return () => navigator.geolocation.clearWatch(id);
+    }, [auto, form.name, form.dob, form.phone_number, status]);
 
-        return () => navigator.geolocation.clearWatch(watchId);
-    }, [autoCheckin, formData, status]);
-
-    const handleAutoSubmit = async () => {
+    const doSubmit = async (data) => {
+        if (!inRange) { setStatus('Move within surgery perimeter'); return; }
         try {
-            setStatus('Checking in automatically...');
-            await saveCheckin({ ...formData, purpose: 'Auto-Arrival' });
-            setStatus('Check-in successful!');
+            setStatus('Registering presence…');
+            await saveCheckin(data || form);
+            setStatus('✓ Presence recorded successfully');
         } catch (err) {
-            console.error("Auto check-in failed", err);
-            setStatus('Auto check-in failed. Please check cloud connection.');
+            setStatus(`Error: ${err.message}`);
         }
     };
 
-    const handleInputChange = (e) => {
+    const onChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setForm(p => ({ ...p, [name]: value }));
         if (name === 'name') localStorage.setItem('pref_name', value);
         if (name === 'dob') localStorage.setItem('pref_dob', value);
+        if (name === 'phone_number') localStorage.setItem('pref_phone', value);
     };
 
-    const toggleAutoCheckin = (e) => {
-        const val = e.target.checked;
-        setAutoCheckin(val);
-        localStorage.setItem('auto_checkin', val);
-    };
+    // ─── EMERGENCY SCREEN ─────────────────────────────
+    if (screen === 'emergency') return (
+        <main className="container red-flag-alert">
+            <h1>⚠️ CRITICAL EMERGENCY</h1>
+            <p style={{ marginBottom: '1rem' }}>High-risk symptoms detected.</p>
+            <p><strong>REPORT TO RECEPTION NOW</strong> or dial <strong>999</strong></p>
+            <button className="btn btn-danger" style={{ width: '100%', marginTop: '2rem' }} onClick={() => setScreen('form')}>RETURN</button>
+        </main>
+    );
 
-    const handleRefresh = () => {
-        window.location.reload(true);
-    };
+    // ─── SAFETY SCREENING ─────────────────────────────
+    if (screen === 'screening') return (
+        <main className="container">
+            <h1 style={{ color: 'var(--emergency)' }}>Safety Screening</h1>
+            <p className="subtitle" style={{ marginBottom: '1.5rem' }}>ARE YOU EXPERIENCING ANY OF THE FOLLOWING?</p>
+            <ul className="red-flag-list">
+                <li>Acute chest pressure or pain</li>
+                <li>Extreme difficulty breathing</li>
+                <li>Major uncontrollable bleeding</li>
+                <li>Sudden neurological weakness (Stroke)</li>
+            </ul>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button className="btn btn-danger" style={{ width: '100%' }} onClick={() => setScreen('emergency')}>YES — I NEED URGENT CARE</button>
+                <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => { setScreen('form'); doSubmit(); }}>NO — CONTINUE CHECK-IN</button>
+            </div>
+        </main>
+    );
 
-    const startCheckIn = () => {
-        setRedFlagState('screening');
-    };
-
-    const handleRedFlagResponse = (hasEmergency) => {
-        if (hasEmergency) {
-            setRedFlagState('emergency');
-        } else {
-            setRedFlagState('none');
-            // Final submit
-            submitCheckin();
-        }
-    };
-
-    const submitCheckin = async () => {
-        if (!canCheckIn) {
-            setStatus('You are too far from the surgery to check in.');
-            return;
-        }
-
-        try {
-            setStatus('Sending to Cloud...');
-            await saveCheckin(formData);
-            setStatus('Check-in successful!');
-            setFormData(prev => ({ ...prev, purpose: '' }));
-        } catch (err) {
-            setStatus(`Cloud sync failed: ${err.message}. Please check credentials.`);
-        }
-    };
-
-    if (redFlagState === 'emergency') {
-        return (
-            <main className="red-flag-alert">
-                <h3>⚠️ MEDICAL EMERGENCY</h3>
-                <p>Based on your symptoms, please <strong>DO NOT</strong> continue with this check-in.</p>
-                <p><strong>Go directly to reception now</strong> or dial <strong>999</strong> if you are in severe distress.</p>
-                <button className="emergency-btn" onClick={() => setRedFlagState('none')}>I am OK, go back</button>
-            </main>
-        );
-    }
-
-    if (redFlagState === 'screening') {
-        return (
-            <main className="red-flag-alert">
-                <h3>Safety Screening</h3>
-                <p>Do you have any of the following?</p>
-                <ul style={{ textAlign: 'left', display: 'inline-block' }}>
-                    <li>Sudden chest pain</li>
-                    <li>Severe difficulty breathing</li>
-                    <li>Heavy, uncontrollable bleeding</li>
-                    <li>Symptoms of a stroke (FACE/ARMS/SPEECH)</li>
-                </ul>
-                <div className="button-group" style={{ marginTop: '1.5rem' }}>
-                    <button className="seen-btn action-btn" onClick={() => handleRedFlagResponse(true)}>YES - I have these</button>
-                    <button className="secondary-btn" onClick={() => handleRedFlagResponse(false)}>NO - Continue</button>
-                </div>
-            </main>
-        );
-    }
-
+    // ─── MAIN FORM ────────────────────────────────────
     return (
-        <main>
-            <section className="location-info">
-                {distance !== null ? (
+        <main className="container">
+            <h1>BULKINGTON</h1>
+            <p className="subtitle">Enterprise Presence System</p>
+
+            <div className="location-panel">
+                {dist !== null ? (
                     <>
-                        <div className="wait-time">
-                            Estimated Wait: <strong>{queueCount * 10}-{(queueCount + 1) * 15} mins</strong>
-                            <br />({queueCount} patients currently waiting)
+                        <div className={`perimeter-status ${inRange ? 'perimeter-in' : 'perimeter-out'}`}>
+                            {inRange ? '✓ WITHIN SECURE PERIMETER' : `✗ ${Math.round(dist)}m FROM PERIMETER`}
                         </div>
-                        <p className={canCheckIn ? 'within-range' : 'out-of-range'}>
-                            Distance: {distance.toFixed(0)}m
-                            {canCheckIn ? ' (In range)' : ' (Too far)'}
-                        </p>
-                        <div className="button-group">
-                            <button
-                                type="button"
-                                className="secondary-btn"
-                                onClick={() => setShowDiagnostics(!showDiagnostics)}
-                            >
-                                {showDiagnostics ? 'Hide Info' : 'Show Info'}
-                            </button>
-                            <button
-                                type="button"
-                                className="secondary-btn"
-                                onClick={handleRefresh}
-                            >
-                                Force Refresh
-                            </button>
+
+                        {orgType === 'Patient' && (
+                            <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                                Est. Wait: <strong style={{ color: 'var(--accent-primary)' }}>{queue * 10}–{(queue + 1) * 15}m</strong>
+                                {' '}({queue} waiting)
+                            </p>
+                        )}
+
+                        <div className="btn-group" style={{ justifyContent: 'center' }}>
+                            <button className="btn btn-secondary" onClick={() => setDiag(!diag)}>{diag ? 'HIDE' : 'DIAGNOSTICS'}</button>
+                            <button className="btn btn-secondary" onClick={() => window.location.reload(true)}>REFRESH</button>
                         </div>
-                        {showDiagnostics && (
+
+                        {diag && (
                             <div className="diagnostics">
-                                <p>Your Lat: {location?.lat.toFixed(6)}</p>
-                                <p>Your Lng: {location?.lng.toFixed(6)}</p>
-                                <p>Target Lat: {SURGERY_COORDS.lat.toFixed(6)}</p>
-                                <p>Target Lng: {SURGERY_COORDS.lng.toFixed(6)}</p>
-                                <p>GPS Accuracy: {accuracy?.toFixed(0)}m</p>
-                                <p className="version-info">Build: {BUILD_VERSION}</p>
+                                <p>LAT: {loc?.lat.toFixed(6)} | LNG: {loc?.lng.toFixed(6)}</p>
+                                <p>DIST: {dist.toFixed(1)}m | ACC: ±{acc?.toFixed(0)}m</p>
+                                <p>BUILD: {VERSION}</p>
                             </div>
                         )}
-                        <div className="auto-checkin-opt">
-                            <input
-                                type="checkbox"
-                                id="autoCheckin"
-                                checked={autoCheckin}
-                                onChange={toggleAutoCheckin}
-                            />
-                            <label htmlFor="autoCheckin">Enable Automatic Check-in on Arrival</label>
+
+                        <div className="toggle-row">
+                            <input type="checkbox" id="auto" checked={auto} onChange={(e) => { setAuto(e.target.checked); localStorage.setItem('auto_checkin', e.target.checked); }} />
+                            <label htmlFor="auto">Auto-register on arrival</label>
                         </div>
                     </>
                 ) : (
-                    <p>Locating...</p>
+                    <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Acquiring location…</p>
                 )}
-            </section>
+            </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); startCheckIn(); }}>
+            <form onSubmit={(e) => { e.preventDefault(); orgType === 'Patient' ? setScreen('screening') : doSubmit(); }}>
                 <div className="input-group">
-                    <label htmlFor="name">Full Name</label>
-                    <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        placeholder="Required for Auto Check-in"
-                        value={formData.name}
-                        onChange={handleInputChange}
-                        required
-                    />
+                    <label>Full name</label>
+                    <input type="text" name="name" value={form.name} onChange={onChange} placeholder="As registered" required />
                 </div>
+
+                {orgType === 'Patient' ? (
+                    <div className="input-group">
+                        <label>Date of birth</label>
+                        <input type="date" name="dob" value={form.dob} onChange={onChange} required />
+                    </div>
+                ) : (
+                    <div className="input-group">
+                        <label>Contact phone (safety req.)</label>
+                        <input type="tel" name="phone_number" value={form.phone_number} onChange={onChange} placeholder="+44…" required />
+                    </div>
+                )}
+
                 <div className="input-group">
-                    <label htmlFor="dob">Date of Birth</label>
-                    <input
-                        type="date"
-                        id="dob"
-                        name="dob"
-                        value={formData.dob}
-                        onChange={handleInputChange}
-                        required
-                    />
+                    <label>{orgType === 'Patient' ? 'Purpose of visit' : 'Organisation / reference'}</label>
+                    <textarea name="purpose" value={form.purpose} onChange={onChange} placeholder={orgType === 'Patient' ? 'Doctor or nurse name if known' : 'Contract ref or company name'} required />
                 </div>
-                <div className="input-group">
-                    <label htmlFor="purpose">Purpose of Visit</label>
-                    <textarea
-                        id="purpose"
-                        name="purpose"
-                        placeholder="Doctor/Nurse name if known"
-                        value={formData.purpose}
-                        onChange={handleInputChange}
-                        required
-                    />
-                </div>
-                <button type="submit" disabled={!canCheckIn || status.includes('successful')}>
-                    {canCheckIn ? 'Check In' : 'Arrive at Surgery to Check In'}
+
+                <button type="submit" disabled={!inRange || status.includes('success')}>
+                    {inRange ? `REGISTER ${(orgType || 'PATIENT').toUpperCase()}` : 'APPROACH SURGERY TO REGISTER'}
                 </button>
             </form>
 
-            {status && <p className="status-message">{status}</p>}
+            {status && <div className="status-message">{status}</div>}
         </main>
     );
 }
-
-export default CheckInForm;

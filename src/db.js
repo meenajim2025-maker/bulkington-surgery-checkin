@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // These should be set in a .env file for production
-const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://vaiexoondumvjeeifvnb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhaWV4b29uZHVtdmplZWlmdm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MTYzOTUsImV4cCI6MjA4ODk5MjM5NX0.jJX87-FtNABSyJkCI7bWeCLbvqtbAvacOJdKSGYjMDY';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -13,7 +13,9 @@ export async function saveCheckin(patientData) {
             {
                 ...patientData,
                 status: 'Waiting',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                org_type: patientData.org_type || 'Patient',
+                phone_number: patientData.phone_number
             }
         ]);
 
@@ -48,6 +50,33 @@ export function subscribeToCheckins(onUpdate) {
         .channel('public:checkins')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, payload => {
             onUpdate(payload);
+        })
+        .subscribe();
+}
+
+// Global Emergency Signaling
+export async function triggerEmergency(type, message) {
+    const { data, error } = await supabase
+        .from('emergencies')
+        .insert([{ type, message, timestamp: new Date().toISOString() }]);
+    if (error) throw error;
+    return data;
+}
+
+export async function resolveEmergency(id) {
+    const { data, error } = await supabase
+        .from('emergencies')
+        .update({ is_active: false })
+        .eq('id', id);
+    if (error) throw error;
+    return data;
+}
+
+export function subscribeToEmergencies(onAlert) {
+    return supabase
+        .channel('public:emergencies')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'emergencies' }, payload => {
+            if (payload.new.is_active) onAlert(payload.new);
         })
         .subscribe();
 }
